@@ -107,7 +107,7 @@ def save_project(req: ProjectSaveRequest):
 @app.get("/projects/{user_id}")
 def list_projects(user_id: str): return {"ok":True,"projects":ensure_user_memory(MEMORY,user_id).get("projects",{})}
 
-@app.post("/ai/command")@app.post("/ai/command")
+@app.post("/ai/command")
 def ai_command(req: AICommandRequest):
     memory = ensure_user_memory(MEMORY, req.user_id)
 
