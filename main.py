@@ -107,44 +107,136 @@ def save_project(req: ProjectSaveRequest):
 @app.get("/projects/{user_id}")
 def list_projects(user_id: str): return {"ok":True,"projects":ensure_user_memory(MEMORY,user_id).get("projects",{})}
 
-@app.post("/ai/command")
+@app.post("/ai/command")@app.post("/ai/command")
 def ai_command(req: AICommandRequest):
-    memory=ensure_user_memory(MEMORY, req.user_id)
-    loc={"lat":req.lat,"lon":req.lon} if req.lat is not None and req.lon is not None else None
-    try:
-    ai = get_brain().answer_or_plan(
-        user_id=req.user_id,
-        command=req.command,
-        memory=memory,
-        location=loc,
-    )
-except Exception as e:
-    print("AI COMMAND ERROR:", repr(e))
-    return {
-        "ok": False,
-        "mode": "answer",
-        "answer": f"AI brain error: {str(e)}",
-        "error": repr(e),
-    }
-    mode=ai.get("mode"); action=ai.get("action")
-    if mode=="memory_update":
-        saved=add_memory_rule(MEMORY, req.user_id, ai.get("task_payload",{}).get("summary") or ai.get("answer") or req.command)
-        return {"ok":True,"mode":"memory_update","answer":ai.get("answer") or "Memory updated.","memory_update":saved,"ai":ai}
-    if mode=="location_task":
-        if req.lat is None or req.lon is None: return {"ok":False,"mode":"location_task","answer":"Location permission chahiye. Mobile app se GPS allow karo.","ai":ai}
-        if action=="nearest_petrol_pump":
-            result=nearest_petrol_pumps(req.lat, req.lon); places=result.get("places",[])
-            answer=f"Sabse najdeek petrol pump: {places[0].get('name')} lagbhag {places[0].get('distance_km')} km door hai." if places else "Nearby petrol pump nahi mila."
-            return {"ok":result.get("ok",False),"mode":"location_task","answer":answer,"result":result,"ai":ai}
-        result=describe_location(req.lat, req.lon); return {"ok":result.get("ok",False),"mode":"location_task","answer":f"Aap approx yahan ho: {result.get('display_name')}" if result.get("display_name") else "Location mil gayi, address resolve nahi hua.","result":result,"ai":ai}
-    if mode=="answer": return {"ok":True,"mode":"answer","answer":ai.get("answer") or "Samjha, Shubham.","ai":ai}
-    if mode in {"pc_task","phone_task"}:
-        if ai.get("requires_confirmation") and action not in {"phone_whatsapp_draft"}:
-            return {"ok":True,"mode":mode,"answer":ai.get("answer") or "This task needs confirmation.","requires_confirmation":True,"ai":ai}
-        if not req.auto_execute: return {"ok":True,"mode":mode,"answer":ai.get("answer") or "Task planned.","requires_confirmation":False,"ai":ai}
-        task=create_worker_task_from_ai(req, ai); return {"ok":True,"mode":"pc_task","answer":ai.get("answer") or "Task sent to PC worker.","task":task,"ai":ai}
-    return {"ok":True,"mode":mode,"answer":ai.get("answer") or "Command understood.","ai":ai}
+    memory = ensure_user_memory(MEMORY, req.user_id)
 
+    loc = None
+    if req.lat is not None and req.lon is not None:
+        loc = {"lat": req.lat, "lon": req.lon}
+
+    try:
+        ai = get_brain().answer_or_plan(
+            user_id=req.user_id,
+            command=req.command,
+            memory=memory,
+            location=loc,
+        )
+    except Exception as e:
+        print("AI COMMAND ERROR:", repr(e))
+        return {
+            "ok": False,
+            "mode": "answer",
+            "answer": f"AI brain error: {str(e)}",
+            "error": repr(e),
+        }
+
+    mode = ai.get("mode")
+    action = ai.get("action")
+
+    if mode == "memory_update":
+        saved = add_memory_rule(
+            MEMORY,
+            req.user_id,
+            ai.get("task_payload", {}).get("summary")
+            or ai.get("answer")
+            or req.command,
+        )
+
+        return {
+            "ok": True,
+            "mode": "memory_update",
+            "answer": ai.get("answer") or "Memory updated.",
+            "memory_update": saved,
+            "ai": ai,
+        }
+
+    if mode == "location_task":
+        if req.lat is None or req.lon is None:
+            return {
+                "ok": False,
+                "mode": "location_task",
+                "answer": "Location permission chahiye. Mobile app se GPS allow karo.",
+                "ai": ai,
+            }
+
+        if action == "nearest_petrol_pump":
+            result = nearest_petrol_pumps(req.lat, req.lon)
+            places = result.get("places", [])
+
+            if places:
+                answer = (
+                    f"Sabse najdeek petrol pump: {places[0].get('name')} "
+                    f"lagbhag {places[0].get('distance_km')} km door hai."
+                )
+            else:
+                answer = "Nearby petrol pump nahi mila."
+
+            return {
+                "ok": result.get("ok", False),
+                "mode": "location_task",
+                "answer": answer,
+                "result": result,
+                "ai": ai,
+            }
+
+        result = describe_location(req.lat, req.lon)
+
+        return {
+            "ok": result.get("ok", False),
+            "mode": "location_task",
+            "answer": (
+                f"Aap approx yahan ho: {result.get('display_name')}"
+                if result.get("display_name")
+                else "Location mil gayi, address resolve nahi hua."
+            ),
+            "result": result,
+            "ai": ai,
+        }
+
+    if mode == "answer":
+        return {
+            "ok": True,
+            "mode": "answer",
+            "answer": ai.get("answer") or "Samjha, Shubham.",
+            "ai": ai,
+        }
+
+    if mode in {"pc_task", "phone_task"}:
+        if ai.get("requires_confirmation") and action not in {"phone_whatsapp_draft"}:
+            return {
+                "ok": True,
+                "mode": mode,
+                "answer": ai.get("answer") or "This task needs confirmation.",
+                "requires_confirmation": True,
+                "ai": ai,
+            }
+
+        if not req.auto_execute:
+            return {
+                "ok": True,
+                "mode": mode,
+                "answer": ai.get("answer") or "Task planned.",
+                "requires_confirmation": False,
+                "ai": ai,
+            }
+
+        task = create_worker_task_from_ai(req, ai)
+
+        return {
+            "ok": True,
+            "mode": "pc_task",
+            "answer": ai.get("answer") or "Task sent to PC worker.",
+            "task": task,
+            "ai": ai,
+        }
+
+    return {
+        "ok": True,
+        "mode": mode,
+        "answer": ai.get("answer") or "Command understood.",
+        "ai": ai,
+    }
 @app.post("/ai/generate-file-updates")
 def generate_file_updates(req: GenerateFileUpdatesRequest):
     return get_brain().generate_file_updates(user_id=req.user_id, command=req.command, memory=ensure_user_memory(MEMORY, req.user_id), project_hint=req.project_hint, project_path=req.project_path, files=[f.model_dump() for f in req.files], analyze_output=req.analyze_output)
