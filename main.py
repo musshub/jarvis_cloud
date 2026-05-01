@@ -111,7 +111,21 @@ def list_projects(user_id: str): return {"ok":True,"projects":ensure_user_memory
 def ai_command(req: AICommandRequest):
     memory=ensure_user_memory(MEMORY, req.user_id)
     loc={"lat":req.lat,"lon":req.lon} if req.lat is not None and req.lon is not None else None
-    ai=get_brain().answer_or_plan(user_id=req.user_id, command=req.command, memory=memory, location=loc)
+    try:
+    ai = get_brain().answer_or_plan(
+        user_id=req.user_id,
+        command=req.command,
+        memory=memory,
+        location=loc,
+    )
+except Exception as e:
+    print("AI COMMAND ERROR:", repr(e))
+    return {
+        "ok": False,
+        "mode": "answer",
+        "answer": f"AI brain error: {str(e)}",
+        "error": repr(e),
+    }
     mode=ai.get("mode"); action=ai.get("action")
     if mode=="memory_update":
         saved=add_memory_rule(MEMORY, req.user_id, ai.get("task_payload",{}).get("summary") or ai.get("answer") or req.command)
